@@ -28,7 +28,7 @@ khronos_api = "*"
 clock_ticks = "*"
 
 [target.arm-linux-androideabi.dependencies.android_glue]
-git = "https://github.com/tomaka/android-rs-glue"
+git = "https://github.com/skligys/android-rs-glue"
 
 [target.i686-apple-darwin.dependencies.cocoa]
 git = "https://github.com/servo/rust-cocoa"
