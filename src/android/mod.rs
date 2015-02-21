@@ -11,7 +11,9 @@ use events::MouseButton;
 
 use std::collections::RingBuf;
 
+use Api;
 use BuilderAttribs;
+use GlRequest;
 
 pub struct Window {
     display: ffi::egl::types::EGLDisplay,
@@ -157,7 +159,10 @@ impl Window {
         android_glue::write_log("eglInitialize succeeded");
 
         let use_gles2 = match builder.gl_version {
-            Some((2, 0)) => true,
+            GlRequest::Specific(Api::OpenGlEs, (2, _)) => true,
+            GlRequest::Specific(Api::OpenGlEs, _) => false,
+            GlRequest::Specific(_, _) => panic!("Only OpenGL ES is supported"),     // FIXME: return a result
+            GlRequest::GlThenGles { opengles_version: (2, _), .. } => true,
             _ => false,
         };
 
@@ -324,6 +329,10 @@ impl Window {
         self.display as *mut libc::c_void
     }
 
+    pub fn platform_window(&self) -> *mut libc::c_void {
+        unimplemented!()
+    }
+
     pub fn get_api(&self) -> ::Api {
         ::Api::OpenGlEs
     }
@@ -358,8 +367,9 @@ impl Drop for Window {
         use std::ptr;
 
         unsafe {
+            // we don't call MakeCurrent(0, 0) because we are not sure that the context
+            // is still the current one
             android_glue::write_log("Destroying gl-init window");
-            ffi::egl::MakeCurrent(self.display, ptr::null(), ptr::null(), ptr::null());
             ffi::egl::DestroySurface(self.display, self.surface);
             ffi::egl::DestroyContext(self.display, self.context);
             ffi::egl::Terminate(self.display);

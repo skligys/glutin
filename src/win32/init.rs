@@ -5,9 +5,12 @@ use std::os;
 use super::callback;
 use super::Window;
 use super::MonitorID;
+
+use Api;
 use BuilderAttribs;
 use CreationError;
 use CreationError::OsError;
+use GlRequest;
 use PixelFormat;
 
 use std::ffi::CString;
@@ -111,7 +114,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
 
             if handle.is_null() {
                 return Err(OsError(format!("CreateWindowEx function failed: {}",
-                    os::error_string(os::errno() as usize))));
+                    os::error_string(os::errno()))));
             }
 
             handle
@@ -122,7 +125,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
             let hdc = unsafe { user32::GetDC(dummy_window) };
             if hdc.is_null() {
                 let err = Err(OsError(format!("GetDC function failed: {}",
-                    os::error_string(os::errno() as usize))));
+                    os::error_string(os::errno()))));
                 unsafe { user32::DestroyWindow(dummy_window); }
                 return err;
             }
@@ -139,7 +142,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
                 mem::size_of::<winapi::PIXELFORMATDESCRIPTOR>() as winapi::UINT, &mut output) } == 0
             {
                 let err = Err(OsError(format!("DescribePixelFormat function failed: {}",
-                    os::error_string(os::errno() as usize))));
+                    os::error_string(os::errno()))));
                 unsafe { user32::DestroyWindow(dummy_window); }
                 return err;
             }
@@ -151,7 +154,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
         unsafe {
             if gdi32::SetPixelFormat(dummy_hdc, 1, &pixel_format) == 0 {
                 let err = Err(OsError(format!("SetPixelFormat function failed: {}",
-                    os::error_string(os::errno() as usize))));
+                    os::error_string(os::errno()))));
                 user32::DestroyWindow(dummy_window);
                 return err;
             }
@@ -211,7 +214,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
 
         if handle.is_null() {
             return Err(OsError(format!("CreateWindowEx function failed: {}",
-                os::error_string(os::errno() as usize))));
+                os::error_string(os::errno()))));
         }
 
         handle
@@ -222,7 +225,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
         let hdc = unsafe { user32::GetDC(real_window) };
         if hdc.is_null() {
             let err = Err(OsError(format!("GetDC function failed: {}",
-                os::error_string(os::errno() as usize))));
+                os::error_string(os::errno()))));
             unsafe { user32::DestroyWindow(real_window); }
             return err;
         }
@@ -233,7 +236,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
     unsafe {
         if gdi32::SetPixelFormat(hdc, 1, &pixel_format) == 0 {
             let err = Err(OsError(format!("SetPixelFormat function failed: {}",
-                os::error_string(os::errno() as usize))));
+                os::error_string(os::errno()))));
             user32::DestroyWindow(real_window);
             return err;
         }
@@ -353,12 +356,21 @@ fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'static>)>
         if extra_functions.CreateContextAttribsARB.is_loaded() {
             let mut attributes = Vec::new();
 
-            if builder.gl_version.is_some() {
-                let version = builder.gl_version.as_ref().unwrap();
-                attributes.push(gl::wgl_extra::CONTEXT_MAJOR_VERSION_ARB as libc::c_int);
-                attributes.push(version.0 as libc::c_int);
-                attributes.push(gl::wgl_extra::CONTEXT_MINOR_VERSION_ARB as libc::c_int);
-                attributes.push(version.1 as libc::c_int);
+            match builder.gl_version {
+                GlRequest::Latest => {},
+                GlRequest::Specific(Api::OpenGl, (major, minor)) => {
+                    attributes.push(gl::wgl_extra::CONTEXT_MAJOR_VERSION_ARB as libc::c_int);
+                    attributes.push(major as libc::c_int);
+                    attributes.push(gl::wgl_extra::CONTEXT_MINOR_VERSION_ARB as libc::c_int);
+                    attributes.push(minor as libc::c_int);
+                },
+                GlRequest::Specific(_, _) => panic!("Only OpenGL is supported"),
+                GlRequest::GlThenGles { opengl_version: (major, minor), .. } => {
+                    attributes.push(gl::wgl_extra::CONTEXT_MAJOR_VERSION_ARB as libc::c_int);
+                    attributes.push(major as libc::c_int);
+                    attributes.push(gl::wgl_extra::CONTEXT_MINOR_VERSION_ARB as libc::c_int);
+                    attributes.push(minor as libc::c_int);
+                },
             }
 
             if builder.gl_debug {
@@ -395,7 +407,7 @@ fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'static>)>
 
     if ctxt.is_null() {
         return Err(OsError(format!("OpenGL context creation failed: {}",
-                           os::error_string(os::errno() as usize))));
+                           os::error_string(os::errno()))));
     }
 
     Ok(ctxt as winapi::HGLRC)
@@ -508,7 +520,7 @@ fn load_opengl32_dll() -> Result<winapi::HMODULE, CreationError> {
 
     if lib.is_null() {
         return Err(OsError(format!("LoadLibrary function failed: {}",
-                                    os::error_string(os::errno() as usize))));
+                                    os::error_string(os::errno()))));
     }
 
     Ok(lib)

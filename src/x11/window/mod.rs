@@ -10,6 +10,9 @@ use super::ffi;
 use std::sync::{Arc, Mutex, Once, ONCE_INIT, Weak};
 use std::sync::{StaticMutex, MUTEX_INIT};
 
+use Api;
+use GlRequest;
+
 pub use self::monitor::{MonitorID, get_available_monitors, get_primary_monitor};
 
 mod events;
@@ -59,7 +62,8 @@ unsafe impl Sync for Window {}
 impl Drop for XWindow {
     fn drop(&mut self) {
         unsafe {
-            ffi::glx::MakeCurrent(self.display, 0, ptr::null());
+            // we don't call MakeCurrent(0, 0) because we are not sure that the context
+            // is still the current one
             ffi::glx::DestroyContext(self.display, self.context);
 
             if self.is_fullscreen {
@@ -482,12 +486,21 @@ impl Window {
         let (context, extra_functions) = unsafe {
             let mut attributes = Vec::new();
 
-            if builder.gl_version.is_some() {
-                let version = builder.gl_version.as_ref().unwrap();
-                attributes.push(ffi::GLX_CONTEXT_MAJOR_VERSION);
-                attributes.push(version.0 as libc::c_int);
-                attributes.push(ffi::GLX_CONTEXT_MINOR_VERSION);
-                attributes.push(version.1 as libc::c_int);
+            match builder.gl_version {
+                GlRequest::Latest => {},
+                GlRequest::Specific(Api::OpenGl, (major, minor)) => {
+                    attributes.push(ffi::GLX_CONTEXT_MAJOR_VERSION);
+                    attributes.push(major as libc::c_int);
+                    attributes.push(ffi::GLX_CONTEXT_MINOR_VERSION);
+                    attributes.push(minor as libc::c_int);
+                },
+                GlRequest::Specific(_, _) => panic!("Only OpenGL is supported"),
+                GlRequest::GlThenGles { opengl_version: (major, minor), .. } => {
+                    attributes.push(ffi::GLX_CONTEXT_MAJOR_VERSION);
+                    attributes.push(major as libc::c_int);
+                    attributes.push(ffi::GLX_CONTEXT_MINOR_VERSION);
+                    attributes.push(minor as libc::c_int);
+                },
             }
 
             if builder.gl_debug {
@@ -704,6 +717,10 @@ impl Window {
 
     pub fn platform_display(&self) -> *mut libc::c_void {
         self.x.display as *mut libc::c_void
+    }
+
+    pub fn platform_window(&self) -> *mut libc::c_void {
+        unimplemented!()
     }
 
     /// See the docs in the crate root file.
