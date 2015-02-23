@@ -171,7 +171,7 @@ fn init(title: Vec<u16>, builder: BuilderAttribs<'static>, builder_sharelists: O
             use libc;
 
             let addr = CString::from_slice(addr.as_bytes());
-            let addr = addr.as_slice_with_nul().as_ptr();
+            let addr = addr.as_ptr();
 
             unsafe {
                 gl::wgl::GetProcAddress(addr) as *const libc::c_void
@@ -297,7 +297,7 @@ fn register_window_class() -> Vec<u16> {
     let class = winapi::WNDCLASSEXW {
         cbSize: mem::size_of::<winapi::WNDCLASSEXW>() as winapi::UINT,
         style: winapi::CS_HREDRAW | winapi::CS_VREDRAW | winapi::CS_OWNDC,
-        lpfnWndProc: callback::callback,
+        lpfnWndProc: Some(callback::callback),
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: unsafe { kernel32::GetModuleHandleW(ptr::null()) },
@@ -397,7 +397,7 @@ fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'static>)>
         None => {
             unsafe {
                 let ctxt = gl::wgl::CreateContext(hdc as *const libc::c_void);
-                if !share.is_null() {
+                if !ctxt.is_null() && !share.is_null() {
                     gl::wgl::ShareLists(share as *const libc::c_void, ctxt);
                 };
                 ctxt

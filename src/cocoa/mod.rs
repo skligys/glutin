@@ -21,10 +21,10 @@ use core_foundation::string::CFString;
 use core_foundation::bundle::{CFBundleGetBundleWithIdentifier, CFBundleGetFunctionPointerForName};
 
 use std::cell::Cell;
-use std::ffi::{CString, c_str_to_bytes};
+use std::ffi::{CString, CStr};
 use std::mem;
 use std::ptr;
-use std::collections::RingBuf;
+use std::collections::VecDeque;
 use std::str::FromStr;
 use std::str::from_utf8;
 use std::sync::Mutex;
@@ -48,7 +48,7 @@ static mut ctrl_pressed: bool = false;
 static mut win_pressed: bool = false;
 static mut alt_pressed: bool = false;
 
-struct DelegateState<'a> {
+struct DelegateState {
     is_closed: bool,
     context: id,
     view: id,
@@ -115,15 +115,15 @@ impl WindowDelegate {
                     class_addMethod(delegate_class,
                                     selector("windowShouldClose:"),
                                     window_should_close,
-                                    CString::from_slice("B@:@".as_bytes()).as_ptr());
+                                    CString::new("B@:@").unwrap().as_ptr());
                     class_addMethod(delegate_class,
                                     selector("windowDidResize:"),
                                     window_did_resize,
-                                    CString::from_slice("V@:@".as_bytes()).as_ptr());
+                                    CString::new("V@:@").unwrap().as_ptr());
                     // Store internal state as user data
                     class_addIvar(delegate_class, WindowDelegate::state_ivar_name().as_ptr() as *const i8,
                                   ptr_size as u64, 3,
-                                  CString::from_slice("?".as_bytes()).as_ptr());
+                                  CString::new("?").unwrap().as_ptr());
                     objc_registerClassPair(delegate_class);
                 // Free class at exit
                 rt::at_exit(|| {
@@ -169,7 +169,7 @@ pub struct Window {
     is_closed: Cell<bool>,
 
     /// Events that have been retreived with XLib but not dispatched with iterators yet
-    pending_events: Mutex<RingBuf<Event>>,
+    pending_events: Mutex<VecDeque<Event>>,
 }
 
 #[cfg(feature = "window")]
@@ -237,7 +237,10 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                 NSLeftMouseUp           => { Some(MouseInput(Released, MouseButton::Left)) },
                 NSRightMouseDown        => { Some(MouseInput(Pressed, MouseButton::Right)) },
                 NSRightMouseUp          => { Some(MouseInput(Released, MouseButton::Right)) },
-                NSMouseMoved            => {
+                NSMouseMoved            |
+                NSLeftMouseDragged      |
+                NSOtherMouseDragged     |
+                NSRightMouseDragged     => {
                     let window_point = event.locationInWindow();
                     let window: id = msg_send()(event, selector("window"));
                     let view_point = if window == 0 {
@@ -252,10 +255,10 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                                     (scale_factor * (view_rect.size.height - view_point.y) as f32) as i32)))
                 },
                 NSKeyDown               => {
-                    let mut events = RingBuf::new();
+                    let mut events = VecDeque::new();
                     let received_c_str = event.characters().UTF8String();
-                    let received_str = CString::from_slice(c_str_to_bytes(&received_c_str));
-                    for received_char in from_utf8(received_str.as_bytes()).unwrap().chars() {
+                    let received_str = CStr::from_ptr(received_c_str);
+                    for received_char in from_utf8(received_str.to_bytes()).unwrap().chars() {
                         if received_char.is_ascii() {
                             events.push_back(ReceivedCharacter(received_char));
                         }
@@ -272,7 +275,7 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                     Some(KeyboardInput(Released, NSEvent::keyCode(event) as u8, vkey))
                 },
                 NSFlagsChanged          => {
-                    let mut events = RingBuf::new();
+                    let mut events = VecDeque::new();
                     let shift_modifier = Window::modifier_event(event, appkit::NSShiftKeyMask, events::VirtualKeyCode::LShift, shift_pressed);
                     if shift_modifier.is_some() {
                         shift_pressed = !shift_pressed;
@@ -380,7 +383,7 @@ impl Window {
             resize: None,
 
             is_closed: Cell::new(false),
-            pending_events: Mutex::new(RingBuf::new()),
+            pending_events: Mutex::new(VecDeque::new()),
         };
 
         Ok(window)
