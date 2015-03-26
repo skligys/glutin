@@ -249,7 +249,7 @@ impl Window {
     /// Returns the position of the top-left hand corner of the window relative to the
     ///  top-left hand corner of the desktop.
     ///
-    /// Note that the top-left hand corner of the desktop is not necessarly the same as
+    /// Note that the top-left hand corner of the desktop is not necessarily the same as
     ///  the screen. If the user uses a desktop with multiple monitors, the top-left hand corner
     ///  of the desktop is the top-left hand corner of the monitor at the top-left of the desktop.
     ///
@@ -414,6 +414,22 @@ impl Window {
     pub fn set_cursor_position(&self, x: i32, y: i32) -> Result<(), ()> {
         self.window.set_cursor_position(x, y)
     }
+
+    /// Grabs the mouse cursor. The cursor's motion will be confined to this
+    /// window and the window has exclusive access to further events regarding
+    /// the cursor.
+    /// Fails if it is not possible to grab the window for some reason, e.g.
+    /// when another window has already done so.
+    /// Has no effect on Android.
+    pub fn grab_cursor(&self) -> Result<(), String> {
+        self.window.grab_cursor()
+    }
+
+    /// Release a previously grabbed mouse cursor.
+    pub fn ungrab_cursor(&self) {
+        self.window.ungrab_cursor();
+    }
+
 }
 
 impl gl_common::GlFunctionsSource for Window {
