@@ -1,9 +1,9 @@
 [package]
 
 name = "glutin"
-version = "0.0.13"
+version = "0.0.14"
 authors = ["tomaka <pierre.krieger1708@gmail.com>"]
-description = "Cross-plaform OpenGL context provider. Important: the crates.io only supports Windows and Linux for the moment."
+description = "Cross-plaform OpenGL context provider."
 keywords = ["windowing", "opengl"]
 license = "Apache-2.0"
 readme = "README.md"
@@ -30,23 +30,11 @@ clock_ticks = "*"
 [target.arm-linux-androideabi.dependencies.android_glue]
 git = "https://github.com/skligys/android-rs-glue"
 
-[target.i686-apple-darwin.dependencies.glutin_cocoa]
-version = "0"
-
-[target.x86_64-apple-darwin.dependencies.glutin_cocoa]
-version = "0"
-
-[target.i686-apple-darwin.dependencies.glutin_core_graphics]
-version = "0"
-
-[target.x86_64-apple-darwin.dependencies.glutin_core_graphics]
-version = "0"
-
-[target.i686-apple-darwin.dependencies.glutin_core_foundation]
-version = "0"
-
-[target.x86_64-apple-darwin.dependencies.glutin_core_foundation]
-version = "0"
+[target.x86_64-apple-darwin.dependencies]
+objc = "0.1"
+glutin_cocoa = "0"
+glutin_core_graphics = "0"
+glutin_core_foundation = "0"
 
 [target.i686-pc-windows-gnu.dependencies]
 winapi = "0.1"
