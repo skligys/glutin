@@ -32,11 +32,11 @@ extern crate libc;
 #[cfg(target_os = "windows")]
 extern crate winapi;
 #[cfg(target_os = "windows")]
-extern crate kernel32_sys as kernel32;
+extern crate kernel32;
 #[cfg(target_os = "windows")]
-extern crate gdi32_sys as gdi32;
+extern crate gdi32;
 #[cfg(target_os = "windows")]
-extern crate user32_sys as user32;
+extern crate user32;
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate objc;
@@ -198,6 +198,23 @@ pub enum MouseCursor {
     RowResize,
 }
 
+/// Describes how glutin handles the cursor.
+#[derive(Debug, Copy)]
+pub enum CursorState {
+    /// Normal cursor behavior.
+    Normal,
+
+    /// The cursor will be invisible when over the window.
+    Hide,
+
+    /// Grabs the mouse cursor. The cursor's motion will be confined to this
+    /// window and the window has exclusive access to further events regarding
+    /// the cursor.
+    ///
+    /// This is useful for first-person cameras for example.
+    Grab,
+}
+
 /// Describes a possible format. Unused.
 #[allow(missing_docs)]
 #[derive(Debug, Clone)]
@@ -287,7 +304,7 @@ impl<'a> BuilderAttribs<'a> {
         (new_attribs, sharing)
     }
 
-    fn choose_pixel_format<T, I>(&self, iter: I) -> (T, PixelFormat)
+    fn choose_pixel_format<T, I>(&self, iter: I) -> Result<(T, PixelFormat), CreationError>
                                  where I: Iterator<Item=(T, PixelFormat)>, T: Clone
     {
         let mut current_result = None;
@@ -326,7 +343,7 @@ impl<'a> BuilderAttribs<'a> {
         }
 
         current_result.or(current_software_result)
-                      .expect("Could not find compliant pixel format")
+                      .ok_or(CreationError::NotSupported)
     }
 }
 
