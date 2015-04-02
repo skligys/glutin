@@ -1,4 +1,8 @@
 use std::sync::atomic::AtomicBool;
+use std::sync::{
+    Arc,
+    Mutex
+};
 use std::ptr;
 use std::mem;
 use std::os;
@@ -19,9 +23,8 @@ use CursorState;
 use GlRequest;
 use PixelFormat;
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::sync::mpsc::channel;
-use std::sync::Mutex;
 
 use libc;
 use super::gl;
@@ -221,12 +224,20 @@ unsafe fn init(title: Vec<u16>, builder: BuilderAttribs<'static>,
         user32::SetForegroundWindow(real_window.0);
     }
 
-    // filling the WINDOW task-local storage so that we can start receiving events
+    // Creating a mutex to track the current cursor state
+    let cursor_state = Arc::new(Mutex::new(CursorState::Normal));
+
+    // filling the CONTEXT_STASH task-local storage so that we can start receiving events
     let events_receiver = {
         let (tx, rx) = channel();
         let mut tx = Some(tx);
-        callback::WINDOW.with(|window| {
-            (*window.borrow_mut()) = Some((real_window.0, tx.take().unwrap()));
+        callback::CONTEXT_STASH.with(|context_stash| {
+            let data = callback::ThreadLocalData {
+                win: real_window.0,
+                sender: tx.take().unwrap(),
+                cursor_state: cursor_state.clone()
+            };
+            (*context_stash.borrow_mut()) = Some(data);
         });
         rx
     };
@@ -252,7 +263,7 @@ unsafe fn init(title: Vec<u16>, builder: BuilderAttribs<'static>,
         gl_library: gl_library,
         events_receiver: events_receiver,
         is_closed: AtomicBool::new(false),
-        cursor_state: Mutex::new(CursorState::Normal),
+        cursor_state: cursor_state,
     })
 }
 
@@ -333,7 +344,22 @@ unsafe fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'st
                     attributes.push(gl::wgl_extra::CONTEXT_MINOR_VERSION_ARB as libc::c_int);
                     attributes.push(minor as libc::c_int);
                 },
-                GlRequest::Specific(_, _) => panic!("Only OpenGL is supported"),
+                GlRequest::Specific(Api::OpenGlEs, (major, minor)) => {
+                    if is_extension_supported(extra_functions, hdc,
+                                              "WGL_EXT_create_context_es2_profile")
+                    {
+                        attributes.push(gl::wgl_extra::CONTEXT_PROFILE_MASK_ARB as libc::c_int);
+                        attributes.push(gl::wgl_extra::CONTEXT_ES2_PROFILE_BIT_EXT as libc::c_int);
+                    } else {
+                        return Err(CreationError::NotSupported);
+                    }
+
+                    attributes.push(gl::wgl_extra::CONTEXT_MAJOR_VERSION_ARB as libc::c_int);
+                    attributes.push(major as libc::c_int);
+                    attributes.push(gl::wgl_extra::CONTEXT_MINOR_VERSION_ARB as libc::c_int);
+                    attributes.push(minor as libc::c_int);
+                },
+                GlRequest::Specific(_, _) => return Err(CreationError::NotSupported),
                 GlRequest::GlThenGles { opengl_version: (major, minor), .. } => {
                     attributes.push(gl::wgl_extra::CONTEXT_MAJOR_VERSION_ARB as libc::c_int);
                     attributes.push(major as libc::c_int);
@@ -503,4 +529,24 @@ unsafe fn load_opengl32_dll() -> Result<winapi::HMODULE, CreationError> {
     }
 
     Ok(lib)
+}
+
+unsafe fn is_extension_supported(extra: &gl::wgl_extra::Wgl, hdc: &WindowWrapper,
+                                 extension: &str) -> bool
+{
+    let extensions = if extra.GetExtensionsStringARB.is_loaded() {
+        let data = extra.GetExtensionsStringARB(hdc.1 as *const _);
+        let data = CStr::from_ptr(data).to_bytes().to_vec();
+        String::from_utf8(data).unwrap()
+
+    } else if extra.GetExtensionsStringEXT.is_loaded() {
+        let data = extra.GetExtensionsStringEXT();
+        let data = CStr::from_ptr(data).to_bytes().to_vec();
+        String::from_utf8(data).unwrap()
+
+    } else {
+        return false;
+    };
+
+    extensions.split(" ").find(|&e| e == extension).is_some()
 }
