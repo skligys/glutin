@@ -13,7 +13,9 @@ use native_monitor::NativeMonitorId;
 use objc::runtime::{Class, Object, Sel, BOOL, YES, NO};
 use objc::declare::ClassDecl;
 
-use cocoa::base::{id, nil, NSUInteger};
+use cocoa::base::{id, nil};
+use cocoa::foundation::{NSAutoreleasePool, NSDate, NSDefaultRunLoopMode, NSPoint, NSRect, NSSize, 
+                        NSString, NSUInteger}; 
 use cocoa::appkit;
 use cocoa::appkit::*;
 use cocoa::appkit::NSEventSubtype::*;
@@ -716,16 +718,6 @@ impl Clone for IdRef {
             let _: id = unsafe { msg_send![self.0, retain] };
         }
         IdRef(self.0)
-    }
-
-    fn clone_from(&mut self, source: &IdRef) {
-        if source.0 != nil {
-            let _: id = unsafe { msg_send![source.0, retain] };
-        }
-        if self.0 != nil {
-            let _: () = unsafe { msg_send![self.0, release] };
-        }
-        self.0 = source.0;
     }
 }
 

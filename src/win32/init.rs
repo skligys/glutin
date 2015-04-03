@@ -1,11 +1,8 @@
 use std::sync::atomic::AtomicBool;
-use std::sync::{
-    Arc,
-    Mutex
-};
+use std::sync::{Arc, Mutex};
+use std::io;
 use std::ptr;
 use std::mem;
-use std::os;
 use std::thread;
 
 use super::callback;
@@ -23,7 +20,8 @@ use CursorState;
 use GlRequest;
 use PixelFormat;
 
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr};
+use std::os::windows::ffi::OsStrExt;
 use std::sync::mpsc::channel;
 
 use libc;
@@ -41,8 +39,9 @@ pub fn new_window(builder: BuilderAttribs<'static>, builder_sharelists: Option<C
                   -> Result<Window, CreationError>
 {
     // initializing variables to be sent to the task
-    let title = builder.title.as_slice().utf16_units()
-                       .chain(Some(0).into_iter()).collect::<Vec<u16>>();    // title to utf16
+
+    let title = OsStr::from_str(&builder.title).encode_wide().chain(Some(0).into_iter())
+                                               .collect::<Vec<_>>();
 
     let (tx, rx) = channel();
 
@@ -125,13 +124,13 @@ unsafe fn init(title: Vec<u16>, builder: BuilderAttribs<'static>,
 
             if handle.is_null() {
                 return Err(OsError(format!("CreateWindowEx function failed: {}",
-                                           os::error_string(os::errno()))));
+                                           format!("{}", io::Error::last_os_error()))));
             }
 
             let hdc = user32::GetDC(handle);
             if hdc.is_null() {
                 let err = Err(OsError(format!("GetDC function failed: {}",
-                                              os::error_string(os::errno()))));
+                                              format!("{}", io::Error::last_os_error()))));
                 return err;
             }
 
@@ -191,13 +190,13 @@ unsafe fn init(title: Vec<u16>, builder: BuilderAttribs<'static>,
 
         if handle.is_null() {
             return Err(OsError(format!("CreateWindowEx function failed: {}",
-                                       os::error_string(os::errno()))));
+                                       format!("{}", io::Error::last_os_error()))));
         }
 
         let hdc = user32::GetDC(handle);
         if hdc.is_null() {
             return Err(OsError(format!("GetDC function failed: {}",
-                                       os::error_string(os::errno()))));
+                                       format!("{}", io::Error::last_os_error()))));
         }
 
         WindowWrapper(handle, hdc)
@@ -268,8 +267,8 @@ unsafe fn init(title: Vec<u16>, builder: BuilderAttribs<'static>,
 }
 
 unsafe fn register_window_class() -> Vec<u16> {
-    let class_name: Vec<u16> = "Window Class".utf16_units().chain(Some(0).into_iter())
-                                             .collect::<Vec<u16>>();
+    let class_name = OsStr::from_str("Window Class").encode_wide().chain(Some(0).into_iter())
+                                                    .collect::<Vec<_>>();
     
     let class = winapi::WNDCLASSEXW {
         cbSize: mem::size_of::<winapi::WNDCLASSEXW>() as winapi::UINT,
@@ -377,7 +376,7 @@ unsafe fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'st
 
             Some(extra_functions.CreateContextAttribsARB(hdc.1 as *const libc::c_void,
                                                          share as *const libc::c_void,
-                                                         attributes.as_slice().as_ptr()))
+                                                         attributes.as_ptr()))
 
         } else {
             None
@@ -399,7 +398,7 @@ unsafe fn create_context(extra: Option<(&gl::wgl_extra::Wgl, &BuilderAttribs<'st
 
     if ctxt.is_null() {
         return Err(OsError(format!("OpenGL context creation failed: {}",
-                           os::error_string(os::errno()))));
+                           format!("{}", io::Error::last_os_error()))));
     }
 
     Ok(ContextWrapper(ctxt as winapi::HGLRC))
@@ -491,8 +490,21 @@ unsafe fn enumerate_arb_pixel_formats(extra: &gl::wgl_extra::Wgl, hdc: &WindowWr
             stencil_bits: get_info(index, gl::wgl_extra::STENCIL_BITS_ARB) as u8,
             stereoscopy: get_info(index, gl::wgl_extra::STEREO_ARB) != 0,
             double_buffer: get_info(index, gl::wgl_extra::DOUBLE_BUFFER_ARB) != 0,
-            multisampling: None,        // FIXME: 
-            srgb: false,        // FIXME: 
+            multisampling: {
+                if is_extension_supported(extra, hdc, "WGL_ARB_multisample") {
+                    match get_info(index, gl::wgl_extra::SAMPLES_ARB) {
+                        0 => None,
+                        a => Some(a as u16),
+                    }
+                } else {
+                    None
+                }
+            },
+            srgb: if is_extension_supported(extra, hdc, "WGL_ARB_framebuffer_sRGB") {
+                get_info(index, gl::wgl_extra::FRAMEBUFFER_SRGB_CAPABLE_ARB) != 0
+            } else {
+                false
+            },
         }, index as libc::c_int));
     }
 
@@ -506,26 +518,26 @@ unsafe fn set_pixel_format(hdc: &WindowWrapper, id: libc::c_int) -> Result<(), C
                                   as winapi::UINT, &mut output) == 0
     {
         return Err(OsError(format!("DescribePixelFormat function failed: {}",
-                                   os::error_string(os::errno()))));
+                                   format!("{}", io::Error::last_os_error()))));
     }
 
     if gdi32::SetPixelFormat(hdc.1, id, &output) == 0 {
         return Err(OsError(format!("SetPixelFormat function failed: {}",
-                                   os::error_string(os::errno()))));
+                                   format!("{}", io::Error::last_os_error()))));
     }
 
     Ok(())
 }
 
 unsafe fn load_opengl32_dll() -> Result<winapi::HMODULE, CreationError> {
-    let name = "opengl32.dll".utf16_units().chain(Some(0).into_iter())
-                             .collect::<Vec<u16>>().as_ptr();
+    let name = OsStr::from_str("opengl32.dll").encode_wide().chain(Some(0).into_iter())
+                                              .collect::<Vec<_>>();
 
-    let lib = kernel32::LoadLibraryW(name);
+    let lib = kernel32::LoadLibraryW(name.as_ptr());
 
     if lib.is_null() {
         return Err(OsError(format!("LoadLibrary function failed: {}",
-                                    os::error_string(os::errno()))));
+                                    format!("{}", io::Error::last_os_error()))));
     }
 
     Ok(lib)

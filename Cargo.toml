@@ -1,6 +1,6 @@
 [package]
 name = "glutin"
-version = "0.0.19"
+version = "0.0.21"
 authors = ["tomaka <pierre.krieger1708@gmail.com>"]
 description = "Cross-plaform OpenGL context provider."
 keywords = ["windowing", "opengl"]
@@ -17,6 +17,7 @@ headless = []
 
 [dependencies]
 gl_common = "*"
+lazy_static = "0.1"
 libc = "*"
 
 [build-dependencies]
